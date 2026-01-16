@@ -1,0 +1,6 @@
+n_estimators: 500
+max_depth:
+min_samples_split: 4
+min_samples_leaf: 2
+max_samples: 0.8
+bootstrap: true

@@ -6,7 +6,7 @@ import json
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import logging
 import yaml
-#from dvclive import Live
+from dvclive import Live
 
 # Ensure the "logs" directory exists
 log_dir = 'logs'
@@ -30,22 +30,22 @@ file_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
-# def load_params(params_path: str) -> dict:
-#     """Load parameters from a YAML file."""
-#     try:
-#         with open(params_path, 'r') as file:
-#             params = yaml.safe_load(file)
-#         logger.debug('Parameters retrieved from %s', params_path)
-#         return params
-#     except FileNotFoundError:
-#         logger.error('File not found: %s', params_path)
-#         raise
-#     except yaml.YAMLError as e:
-#         logger.error('YAML error: %s', e)
-#         raise
-#     except Exception as e:
-#         logger.error('Unexpected error: %s', e)
-#         raise
+def load_params(params_path: str) -> dict:
+    """Load parameters from a YAML file."""
+    try:
+        with open(params_path, 'r') as file:
+            params = yaml.safe_load(file)
+        logger.debug('Parameters retrieved from %s', params_path)
+        return params
+    except FileNotFoundError:
+        logger.error('File not found: %s', params_path)
+        raise
+    except yaml.YAMLError as e:
+        logger.error('YAML error: %s', e)
+        raise
+    except Exception as e:
+        logger.error('Unexpected error: %s', e)
+        raise
 
 def load_model(file_path: str):
     """Load the trained model from a file."""
@@ -112,16 +112,37 @@ def save_metrics(metrics: dict, file_path: str) -> None:
 
 def main():
     try:
+        # Load params
+        params = load_params("params.yaml")
+
+        # Load model & data
         model = load_model("./models/model.pkl")
         test_data = load_data("./data/processed/test_engineered.csv")
 
         X_test = test_data.iloc[:, :-1].values
         y_test = test_data.iloc[:, -1].values
 
-        assert not np.isnan(y_test).any()
+        # Safety check
+        assert not np.isnan(y_test).any(), "NaNs present in y_test"
 
-        metrics = evaluate_model(model, X_test, y_test)
+        # Predict once
+        y_pred = model.predict(X_test)
 
+        # Compute metrics once
+        metrics = {
+            "mae": mean_absolute_error(y_test, y_pred),
+            "rmse": np.sqrt(mean_squared_error(y_test, y_pred)),
+            "r2": r2_score(y_test, y_pred)
+        }
+
+        # DVC Live tracking
+        with Live(save_dvc_exp=True) as live:
+            for k, v in metrics.items():
+                live.log_metric(k, v)
+
+            live.log_params(params["model_building"])
+
+        # Save metrics for DVC
         save_metrics(metrics, "reports/metrics.json")
 
         logger.info("Model evaluation completed successfully")
@@ -129,6 +150,7 @@ def main():
     except Exception as e:
         logger.error("Model evaluation failed: %s", e)
         print(f"Error: {e}")
+
 
 
 if __name__ == '__main__':
